@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Chorizo Run</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -10,7 +10,11 @@
   <main class="wrap">
     <h1 class="title">🌭 Chorizo Run</h1>
     <canvas id="game" width="480" height="720" aria-label="Chorizo Run"></canvas>
-    <p class="hint">Muévete con ← → / A D, con el ratón o tocando la pantalla. Pulsa ESPACIO o toca para empezar.</p>
+    <div class="controls" id="controls">
+      <button id="btn-left" type="button" aria-label="Mover a la izquierda">◀</button>
+      <button id="btn-right" type="button" aria-label="Mover a la derecha">▶</button>
+    </div>
+    <p class="hint">En móvil: mantén pulsado ◀ ▶ o arrastra el dedo por la pantalla. En ordenador: ← → / A D o el ratón. Toca la pantalla o pulsa ESPACIO para empezar.</p>
   </main>
   <script src="game.js" defer></script>
 </body>

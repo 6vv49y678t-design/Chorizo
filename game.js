@@ -399,6 +399,31 @@
     pointerX = null;
   });
 
+  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+  const isTouch = window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (isTouch) document.body.classList.add("touch");
+
+  function bindHoldButton(id, key) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const on = (e) => {
+      e.preventDefault();
+      keys[key] = true;
+    };
+    const off = (e) => {
+      e.preventDefault();
+      keys[key] = false;
+    };
+    el.addEventListener("pointerdown", on);
+    el.addEventListener("pointerup", off);
+    el.addEventListener("pointercancel", off);
+    el.addEventListener("pointerleave", off);
+    el.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  bindHoldButton("btn-left", "left");
+  bindHoldButton("btn-right", "right");
+
   resize();
   window.addEventListener("resize", resize);
   initClouds();

@@ -10,9 +10,8 @@ Abre `index.html` en cualquier navegador, o publícalo con GitHub Pages.
 
 ### Controles
 
-- **← →** o **A / D**: moverse
-- **Ratón** o **dedo** (tocar y arrastrar): moverte hacia donde apuntas
-- **ESPACIO / ENTER** o tocar la pantalla: empezar / reintentar
+- **Móvil (táctil)**: botones **◀ ▶** en pantalla (mantén pulsado) o arrastra el dedo por el canvas; toca la pantalla para empezar / reintentar
+- **Ordenador**: **← →** o **A / D**, o el ratón; **ESPACIO / ENTER** o clic para empezar / reintentar
 
 ### Reglas
 
