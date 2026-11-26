@@ -8,12 +8,19 @@
 
   const BEST_KEY = "chorizoRunBest";
 
+  const VERSION = "v1.1";
+  const LEVEL_STEP = 100;
+  const BOSS_EVERY = 3;
+  const BOSS_TIME = 12;
+  const BOSS_REWARD = 150;
+
   const GOOD = [
     { emoji: "🪙", points: 10, weight: 5 },
     { emoji: "🫒", points: 5, weight: 4 },
     { emoji: "🍞", points: 20, weight: 2 },
+    { emoji: "🍷", points: 30, weight: 1 },
   ];
-  const BAD = ["🔥", "🗡", "🪰"];
+  const BAD = ["🔥", "🗡", "🪰", "🧨"];
 
   let state = "menu";
   let score = 0;
@@ -24,6 +31,12 @@
   let invuln = 0;
   let shakeTime = 0;
   let newRecord = false;
+  let combo = 0;
+  let level = 1;
+  let boss = null;
+  let banner = null;
+  let intro = 0;
+  let audioCtx = null;
 
   const player = { x: W / 2, y: H - 100, r: 26, tilt: 0 };
   let items = [];
@@ -38,6 +51,55 @@
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function beep(freq, dur, type, gain, when = 0) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + when;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function sfx(name) {
+    if (!audioCtx) return;
+    if (name === "catch") {
+      beep(660, 0.08, "square", 0.06);
+      beep(880, 0.1, "square", 0.05, 0.06);
+    } else if (name === "hit") {
+      beep(160, 0.25, "sawtooth", 0.1);
+      beep(90, 0.3, "sawtooth", 0.08, 0.05);
+    } else if (name === "over") {
+      beep(400, 0.15, "triangle", 0.09);
+      beep(300, 0.15, "triangle", 0.09, 0.15);
+      beep(180, 0.35, "triangle", 0.09, 0.3);
+    } else if (name === "record") {
+      [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.12, "square", 0.06, i * 0.09));
+    } else if (name === "level") {
+      beep(520, 0.1, "square", 0.06);
+      beep(780, 0.14, "square", 0.06, 0.08);
+    } else if (name === "boss") {
+      beep(120, 0.4, "sawtooth", 0.12);
+      beep(80, 0.5, "sawtooth", 0.1, 0.1);
+    } else if (name === "start") {
+      beep(440, 0.08, "square", 0.06);
+      beep(660, 0.1, "square", 0.06, 0.07);
+    }
   }
 
   function initClouds() {
@@ -60,6 +122,11 @@
     invuln = 0;
     shakeTime = 0;
     newRecord = false;
+    combo = 0;
+    level = 1;
+    boss = null;
+    banner = null;
+    intro = 4;
     player.x = W / 2;
     player.tilt = 0;
     items = [];
@@ -70,15 +137,31 @@
   function startGame() {
     reset();
     state = "playing";
+    sfx("start");
   }
 
   function gameOver() {
     state = "over";
+    sfx("over");
     if (score > best) {
       best = Math.floor(score);
       localStorage.setItem(BEST_KEY, String(best));
       newRecord = true;
+      sfx("record");
     }
+  }
+
+  function startMiniboss() {
+    boss = {
+      x: W / 2,
+      y: H * 0.3,
+      r: 44,
+      dir: Math.random() < 0.5 ? -1 : 1,
+      speed: 150 + level * 20,
+      timeLeft: BOSS_TIME,
+    };
+    banner = { text: `🐕 ¡MINIBOSS! ¡Sobrevive ${BOSS_TIME} s!`, time: 2.4, color: "#e63946" };
+    sfx("boss");
   }
 
   function pickGood() {
@@ -92,15 +175,15 @@
   }
 
   function spawnItem() {
-    const badChance = Math.min(0.5, 0.28 + elapsed * 0.006);
+    const badChance = Math.min(0.55, 0.28 + elapsed * 0.006 + (boss ? 0.12 : 0));
     const isBad = Math.random() < badChance;
     const good = isBad ? null : pickGood();
     const emoji = isBad ? BAD[Math.floor(Math.random() * BAD.length)] : good.emoji;
     items.push({
       x: 30 + Math.random() * (W - 60),
       y: -30,
-      vy: 180 + elapsed * 7 + Math.random() * 60,
-      r: isBad ? 20 : 18,
+      vy: 180 + elapsed * 7 + (level - 1) * 25 + Math.random() * 60,
+      r: isBad ? (emoji === "🧨" ? 25 : 20) : 18,
       emoji,
       good: !isBad,
       points: good ? good.points : 0,
@@ -141,6 +224,56 @@
     score += dt * 2;
     invuln = Math.max(0, invuln - dt);
     shakeTime = Math.max(0, shakeTime - dt);
+    intro = Math.max(0, intro - dt);
+    if (banner) {
+      banner.time -= dt;
+      if (banner.time <= 0) banner = null;
+    }
+
+    const newLevel = Math.floor(score / LEVEL_STEP) + 1;
+    if (newLevel > level) {
+      level = newLevel;
+      banner = { text: `¡NIVEL ${level}!`, time: 1.6, color: "#06d6a0" };
+      sfx("level");
+      if (level % BOSS_EVERY === 0 && !boss) startMiniboss();
+    }
+
+    if (boss) {
+      boss.x += boss.dir * boss.speed * dt;
+      if (boss.x < boss.r + 10) {
+        boss.x = boss.r + 10;
+        boss.dir = 1;
+      }
+      if (boss.x > W - boss.r - 10) {
+        boss.x = W - boss.r - 10;
+        boss.dir = -1;
+      }
+      boss.y = H * 0.3 + Math.sin(elapsed * 3) * 34;
+      boss.timeLeft -= dt;
+      if (boss.timeLeft <= 0) {
+        score += BOSS_REWARD;
+        lives = Math.min(3, lives + 1);
+        banner = { text: `¡Miniboss derrotado! +${BOSS_REWARD} y +1 ❤️`, time: 2.2, color: "#ffd166" };
+        burst(boss.x, boss.y, "#ffd166", 30);
+        sfx("record");
+        boss = null;
+      } else {
+        const dxb = boss.x - player.x;
+        const dyb = boss.y - player.y;
+        if (dxb * dxb + dyb * dyb < (boss.r + player.r * 0.85) ** 2 && invuln <= 0) {
+          lives -= 1;
+          invuln = 1.6;
+          shakeTime = 0.35;
+          combo = 0;
+          burst(player.x, player.y, "#e63946", 22);
+          sfx("hit");
+          if (lives <= 0) {
+            gameOver();
+            return;
+          }
+        }
+      }
+    }
 
     const speed = 430;
     let vx = 0;
@@ -156,7 +289,8 @@
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnItem();
-      spawnTimer = Math.max(0.32, 0.85 - elapsed * 0.012) * (0.7 + Math.random() * 0.6);
+      const base = Math.max(0.3, 0.85 - elapsed * 0.012 - (level - 1) * 0.03);
+      spawnTimer = base * (boss ? 0.55 : 1) * (0.7 + Math.random() * 0.6);
     }
 
     const fallBoost = Math.min(380, elapsed * 7);
@@ -172,13 +306,17 @@
       const dy = it.y - player.y;
       if (dx * dx + dy * dy < (it.r + player.r * 0.85) ** 2) {
         if (it.good) {
-          score += it.points;
+          combo += 1;
+          score += it.points + Math.min(combo, 10);
           burst(it.x, it.y, "#ffd166", 12);
+          sfx("catch");
         } else if (invuln <= 0) {
           lives -= 1;
           invuln = 1.6;
           shakeTime = 0.35;
+          combo = 0;
           burst(player.x, player.y, "#e63946", 22);
+          sfx("hit");
           if (lives <= 0) {
             items.splice(i, 1);
             updateParticles(dt);
@@ -287,6 +425,20 @@
     }
   }
 
+  function drawBoss() {
+    if (!boss) return;
+    ctx.save();
+    ctx.translate(boss.x, boss.y);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${boss.r * 2}px serif`;
+    ctx.fillText("🐕", 0, 0);
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillStyle = "#e63946";
+    ctx.fillText(`${Math.ceil(boss.timeLeft)}s`, 0, -boss.r - 12);
+    ctx.restore();
+  }
+
   function drawParticles() {
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
@@ -304,6 +456,13 @@
     ctx.fillStyle = "#f5e6d3";
     ctx.font = "bold 22px sans-serif";
     ctx.fillText(`Puntos: ${Math.floor(score)}`, 14, 12);
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillStyle = "#06d6a0";
+    ctx.fillText(`Nivel ${level}`, 14, 40);
+    if (combo >= 3) {
+      ctx.fillStyle = "#ff9f1c";
+      ctx.fillText(`🔥 Combo x${combo}`, 14, 60);
+    }
     ctx.textAlign = "right";
     ctx.font = "22px serif";
     ctx.fillText("❤️".repeat(Math.max(0, lives)), W - 14, 12);
@@ -318,9 +477,9 @@
   }
 
   function drawMenu() {
-    centerText("🌭 CHORIZO RUN 🌭", H / 2 - 120, 38, "#ffd166");
-    centerText("Esquiva el fuego, los cuchillos y las moscas.", W / 2, H / 2 - 40, 17, "#f5e6d3", false);
-    centerText("Recoge 🪙 🫒 🍞 para sumar puntos.", W / 2, H / 2 - 12, 17, "#f5e6d3", false);
+    centerText(`🌭 CHORIZO RUN ${VERSION} 🌭`, H / 2 - 120, 34, "#ffd166");
+    centerText("Recoge 🪙 🫒 🍞 🍷 y esquiva 🔥 🗡 🪰 🧨.", W / 2, H / 2 - 48, 16, "#f5e6d3", false);
+    centerText(`Nivel cada ${LEVEL_STEP} puntos · 🐕 miniboss cada ${BOSS_EVERY} niveles.`, W / 2, H / 2 - 20, 16, "#f5e6d3", false);
     centerText(`Récord: ${best}`, W / 2, H / 2 + 30, 20, "#ffb4a2");
     const pulse = 1 + Math.sin(performance.now() / 300) * 0.05;
     ctx.save();
@@ -348,10 +507,34 @@
     }
     drawBackground();
     drawItems();
+    drawBoss();
     drawParticles();
     if (state !== "menu") drawChorizo();
     if (state === "playing") drawHUD();
     ctx.restore();
+
+    if (banner && state === "playing") {
+      ctx.globalAlpha = Math.min(1, banner.time);
+      centerText(banner.text, H * 0.22, 24, banner.color);
+      ctx.globalAlpha = 1;
+    }
+    if (state === "playing" && intro > 0) {
+      ctx.globalAlpha = Math.min(0.92, intro);
+      ctx.fillStyle = "rgba(20, 8, 12, 0.78)";
+      roundRect(W / 2 - 205, H / 2 - 82, 410, 158, 12);
+      ctx.fill();
+      centerText("🎯 Recoge 🪙 🫒 🍞 🍷 para sumar puntos", H / 2 - 46, 16, "#ffd166", false);
+      centerText("☠️ Esquiva 🔥 🗡 🪰 🧨 y al miniboss 🐕", H / 2 - 10, 16, "#f5e6d3", false);
+      centerText("👆 Muévete con ◀ ▶, ← →, el ratón o el dedo", H / 2 + 26, 16, "#f5e6d3", false);
+      centerText(`Nivel cada ${LEVEL_STEP} puntos · Miniboss cada ${BOSS_EVERY} niveles`, H / 2 + 58, 13, "#ffb4a2", false);
+      ctx.globalAlpha = 1;
+    }
+    if (state === "paused") {
+      ctx.fillStyle = "rgba(20, 8, 12, 0.7)";
+      ctx.fillRect(0, 0, W, H);
+      centerText("⏸ PAUSA", W / 2, H / 2 - 20, 34, "#ffd166");
+      centerText("Toca la pantalla o pulsa ESPACIO para continuar", W / 2, H / 2 + 30, 17, "#ffffff", false);
+    }
 
     if (state === "menu") drawMenu();
     if (state === "over") drawGameOver();
@@ -366,12 +549,22 @@
     requestAnimationFrame(loop);
   }
 
+  function primaryAction() {
+    ensureAudio();
+    if (state === "playing") return;
+    if (state === "paused") {
+      state = "playing";
+      return;
+    }
+    startGame();
+  }
+
   window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = true;
     if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = true;
-    if ((e.key === " " || e.key === "Enter") && state !== "playing") {
+    if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      startGame();
+      primaryAction();
     }
   });
   window.addEventListener("keyup", (e) => {
@@ -385,7 +578,7 @@
   }
   canvas.addEventListener("pointerdown", (e) => {
     pointerX = pointerToX(e);
-    if (state !== "playing") startGame();
+    primaryAction();
   });
   canvas.addEventListener("pointermove", (e) => {
     pointerX = pointerToX(e);
@@ -397,6 +590,9 @@
     keys.left = false;
     keys.right = false;
     pointerX = null;
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state === "playing") state = "paused";
   });
 
   canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
