@@ -8,7 +8,7 @@
 
   const BEST_KEY = "chorizoRunBest";
 
-  const VERSION = "v1.1";
+  const VERSION = "v2.0";
   const LEVEL_STEP = 100;
   const BOSS_EVERY = 3;
   const BOSS_TIME = 12;
@@ -19,6 +19,7 @@
     { emoji: "🫒", points: 5, weight: 4 },
     { emoji: "🍞", points: 20, weight: 2 },
     { emoji: "🍷", points: 30, weight: 1 },
+    { emoji: "⭐", points: 50, weight: 1 },
   ];
   const BAD = ["🔥", "🗡", "🪰", "🧨"];
 
@@ -37,6 +38,9 @@
   let banner = null;
   let intro = 0;
   let audioCtx = null;
+  let musicOn = true;
+  let musicStep = 0;
+  const BASSLINE = [220, 0, 220, 261.63, 0, 196, 220, 0, 220, 0, 293.66, 0, 261.63, 0, 196, 0];
 
   const player = { x: W / 2, y: H - 100, r: 26, tilt: 0 };
   let items = [];
@@ -58,7 +62,7 @@
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) audioCtx = new AC();
     }
-    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    if (audioCtx && audioCtx.state === "suspended" && musicOn) audioCtx.resume();
   }
 
   function beep(freq, dur, type, gain, when = 0) {
@@ -175,14 +179,14 @@
   }
 
   function spawnItem() {
-    const badChance = Math.min(0.55, 0.28 + elapsed * 0.006 + (boss ? 0.12 : 0));
+    const badChance = Math.min(0.5, 0.22 + elapsed * 0.005 + (boss ? 0.12 : 0));
     const isBad = Math.random() < badChance;
     const good = isBad ? null : pickGood();
     const emoji = isBad ? BAD[Math.floor(Math.random() * BAD.length)] : good.emoji;
     items.push({
       x: 30 + Math.random() * (W - 60),
       y: -30,
-      vy: 180 + elapsed * 7 + (level - 1) * 25 + Math.random() * 60,
+      vy: 160 + elapsed * 6 + (level - 1) * 20 + Math.random() * 60,
       r: isBad ? (emoji === "🧨" ? 25 : 20) : 18,
       emoji,
       good: !isBad,
@@ -233,7 +237,7 @@
     const newLevel = Math.floor(score / LEVEL_STEP) + 1;
     if (newLevel > level) {
       level = newLevel;
-      banner = { text: `¡NIVEL ${level}!`, time: 1.6, color: "#06d6a0" };
+      banner = { text: `¡NIVEL ${level}!`, time: 1.6, color: "#1e8e5a" };
       sfx("level");
       if (level % BOSS_EVERY === 0 && !boss) startMiniboss();
     }
@@ -289,11 +293,11 @@
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnItem();
-      const base = Math.max(0.3, 0.85 - elapsed * 0.012 - (level - 1) * 0.03);
+      const base = Math.max(0.34, 1.0 - elapsed * 0.01 - (level - 1) * 0.03);
       spawnTimer = base * (boss ? 0.55 : 1) * (0.7 + Math.random() * 0.6);
     }
 
-    const fallBoost = Math.min(380, elapsed * 7);
+    const fallBoost = Math.min(340, elapsed * 6);
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
       it.y += (it.vy + fallBoost * 0.4) * dt;
@@ -343,25 +347,48 @@
   }
 
   function drawBackground() {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#2b1a2e");
-    g.addColorStop(0.6, "#4a2436");
-    g.addColorStop(1, "#6b3030");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    for (let ty = 0; ty < H - 46; ty += 44) {
+      for (let tx = 0; tx < W; tx += 44) {
+        ctx.fillStyle = ((tx + ty) / 44) % 2 === 0 ? "#f6e7cf" : "#efdcbc";
+        ctx.fillRect(tx, ty, 44, 44);
+      }
+    }
+    const shade = ctx.createLinearGradient(0, 0, 0, H);
+    shade.addColorStop(0, "rgba(120, 72, 40, 0.14)");
+    shade.addColorStop(1, "rgba(120, 72, 40, 0)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, W, H - 46);
 
-    ctx.fillStyle = "rgba(255, 235, 210, 0.10)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
     for (const c of clouds) {
       ctx.beginPath();
-      ctx.arc(c.x, c.y, 26 * c.s, 0, Math.PI * 2);
-      ctx.arc(c.x + 22 * c.s, c.y + 6 * c.s, 20 * c.s, 0, Math.PI * 2);
-      ctx.arc(c.x - 24 * c.s, c.y + 8 * c.s, 18 * c.s, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, 24 * c.s, 0, Math.PI * 2);
+      ctx.arc(c.x + 20 * c.s, c.y + 6 * c.s, 18 * c.s, 0, Math.PI * 2);
+      ctx.arc(c.x - 22 * c.s, c.y + 7 * c.s, 16 * c.s, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = "#3d1f1a";
+    ctx.fillStyle = "#8a5a3b";
+    ctx.fillRect(0, 96, W, 10);
+    const jars = [
+      { x: 80, color: "#c0392b" },
+      { x: W / 2, color: "#7d9b3a" },
+      { x: W - 80, color: "#e67e22" },
+    ];
+    for (const j of jars) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+      roundRect(j.x - 20, 52, 40, 44, 8);
+      ctx.fill();
+      ctx.fillStyle = j.color;
+      roundRect(j.x - 16, 68, 32, 24, 5);
+      ctx.fill();
+      ctx.fillStyle = "#8a5a3b";
+      ctx.fillRect(j.x - 22, 46, 44, 8);
+    }
+
+    ctx.fillStyle = "#8a5a3b";
     ctx.fillRect(0, H - 46, W, 46);
-    ctx.fillStyle = "#5a2d22";
+    ctx.fillStyle = "#a9714b";
     ctx.fillRect(0, H - 46, W, 6);
   }
 
@@ -373,12 +400,15 @@
     if (blink) ctx.globalAlpha = 0.35;
 
     const grad = ctx.createLinearGradient(0, -22, 0, 22);
-    grad.addColorStop(0, "#d95f43");
+    grad.addColorStop(0, "#e0694a");
     grad.addColorStop(0.5, "#b03a2e");
     grad.addColorStop(1, "#7e241b");
     ctx.fillStyle = grad;
     roundRect(-40, -16, 80, 32, 16);
     ctx.fill();
+    ctx.strokeStyle = "#7e241b";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
 
     ctx.fillStyle = "#8e2f24";
     ctx.beginPath();
@@ -386,17 +416,25 @@
     ctx.ellipse(40, 0, 7, 16, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.fillStyle = "#f2c1a8";
+    const specks = [[-24, -6], [-10, 5], [4, -7], [18, 6], [28, -4], [-4, 8], [12, -2]];
+    for (const [sx, sy] of specks) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.strokeStyle = "#f5e6d3";
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(-44, -4);
-    ctx.lineTo(-44, 4);
-    ctx.moveTo(44, -4);
-    ctx.lineTo(44, 4);
+    ctx.moveTo(-44, -5);
+    ctx.lineTo(-44, 5);
+    ctx.moveTo(44, -5);
+    ctx.lineTo(44, 5);
     ctx.stroke();
 
-    ctx.fillStyle = "rgba(255, 220, 190, 0.35)";
-    roundRect(-28, -11, 34, 7, 3.5);
+    ctx.fillStyle = "rgba(255, 224, 196, 0.5)";
+    roundRect(-28, -12, 34, 6, 3);
     ctx.fill();
 
     ctx.restore();
@@ -416,6 +454,13 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const it of items) {
+      const glow = ctx.createRadialGradient(it.x, it.y, 2, it.x, it.y, it.r * 1.7);
+      glow.addColorStop(0, it.good ? "rgba(255, 209, 102, 0.45)" : "rgba(230, 57, 70, 0.35)");
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(it.x, it.y, it.r * 1.7, 0, Math.PI * 2);
+      ctx.fill();
       ctx.save();
       ctx.translate(it.x, it.y);
       ctx.rotate(it.rot * 0.4);
@@ -453,15 +498,24 @@
   function drawHUD() {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillStyle = "#f5e6d3";
+    ctx.fillStyle = "#5a2d22";
     ctx.font = "bold 22px sans-serif";
     ctx.fillText(`Puntos: ${Math.floor(score)}`, 14, 12);
     ctx.font = "bold 15px sans-serif";
-    ctx.fillStyle = "#06d6a0";
+    ctx.fillStyle = "#1e8e5a";
     ctx.fillText(`Nivel ${level}`, 14, 40);
     if (combo >= 3) {
-      ctx.fillStyle = "#ff9f1c";
+      ctx.fillStyle = "#d35400";
       ctx.fillText(`🔥 Combo x${combo}`, 14, 60);
+    }
+    const prog = (score % LEVEL_STEP) / LEVEL_STEP;
+    ctx.fillStyle = "rgba(90, 45, 34, 0.22)";
+    roundRect(W / 2 - 70, 16, 140, 9, 4.5);
+    ctx.fill();
+    if (prog > 0) {
+      ctx.fillStyle = "#b03a2e";
+      roundRect(W / 2 - 70, 16, 140 * prog, 9, 4.5);
+      ctx.fill();
     }
     ctx.textAlign = "right";
     ctx.font = "22px serif";
@@ -477,15 +531,18 @@
   }
 
   function drawMenu() {
-    centerText(`🌭 CHORIZO RUN ${VERSION} 🌭`, H / 2 - 120, 34, "#ffd166");
-    centerText("Recoge 🪙 🫒 🍞 🍷 y esquiva 🔥 🗡 🪰 🧨.", W / 2, H / 2 - 48, 16, "#f5e6d3", false);
-    centerText(`Nivel cada ${LEVEL_STEP} puntos · 🐕 miniboss cada ${BOSS_EVERY} niveles.`, W / 2, H / 2 - 20, 16, "#f5e6d3", false);
-    centerText(`Récord: ${best}`, W / 2, H / 2 + 30, 20, "#ffb4a2");
+    ctx.fillStyle = "rgba(255, 252, 245, 0.85)";
+    roundRect(W / 2 - 210, H / 2 - 165, 420, 330, 16);
+    ctx.fill();
+    centerText(`🌭 CHORIZO RUN ${VERSION} 🌭`, H / 2 - 120, 34, "#b03a2e");
+    centerText("Recoge 🪙 🫒 🍞 🍷 ⭐ y esquiva 🔥 🗡 🪰 🧨.", W / 2, H / 2 - 48, 16, "#5a2d22", false);
+    centerText(`Nivel cada ${LEVEL_STEP} puntos · 🐕 miniboss cada ${BOSS_EVERY} niveles.`, W / 2, H / 2 - 20, 16, "#5a2d22", false);
+    centerText(`Récord: ${best}`, W / 2, H / 2 + 30, 20, "#8a5a3b");
     const pulse = 1 + Math.sin(performance.now() / 300) * 0.05;
     ctx.save();
     ctx.translate(W / 2, H / 2 + 110);
     ctx.scale(pulse, pulse);
-    centerText("Pulsa ESPACIO o toca para jugar", 0, 20, "#ffffff");
+    centerText("Pulsa ESPACIO o toca para jugar", 0, 20, "#b03a2e");
     ctx.restore();
   }
 
@@ -619,6 +676,29 @@
   }
   bindHoldButton("btn-left", "left");
   bindHoldButton("btn-right", "right");
+
+  const btnSound = document.getElementById("btn-sound");
+  const updateSoundBtn = () => {
+    btnSound.textContent = musicOn ? "🔊" : "🔇";
+  };
+  btnSound.addEventListener("click", (e) => {
+    e.preventDefault();
+    ensureAudio();
+    musicOn = !musicOn;
+    if (audioCtx) {
+      if (musicOn) audioCtx.resume();
+      else audioCtx.suspend();
+    }
+    updateSoundBtn();
+  });
+  updateSoundBtn();
+
+  setInterval(() => {
+    if (!audioCtx || !musicOn || state !== "playing") return;
+    const f = BASSLINE[musicStep % BASSLINE.length];
+    if (f) beep(f, 0.14, "triangle", 0.045);
+    musicStep += 1;
+  }, 160);
 
   resize();
   window.addEventListener("resize", resize);
